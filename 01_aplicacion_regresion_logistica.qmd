@@ -1,0 +1,269 @@
+---
+title: "Aplicación de la regresión logística binaria"
+subtitle: "Análisis de complicaciones del pie diabético: estudio de casos y controles"
+author: "Trabajo de Bioestadística"
+lang: es
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: show
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Introducción
+
+Este documento desarrolla la aplicación de un modelo de regresión logística binaria para estudiar la asociación entre características clínicas y demográficas y la pertenencia al grupo de casos, frente al grupo de controles, en la base `complicaciones_pie_diab.csv`.
+
+El diseño de casos y controles implica que el desenlace analizado es la pertenencia al grupo (`caso` o `control`). Por ello, los resultados se interpretan como **odds ratios (OR) de pertenecer al grupo de casos**, y no como estimaciones directas de riesgo absoluto o incidencia en la población.
+
+# Objetivo
+
+Estimar la asociación entre un conjunto de variables demográficas y clínicas seleccionadas y la condición de caso, mediante regresión logística binaria.
+
+# Fuente de datos
+
+La base se lee directamente desde GitHub mediante su URL *Raw*. No es necesario descargar ni copiar manualmente el CSV al repositorio del proyecto.
+
+```{r}
+url_datos <- "https://raw.githubusercontent.com/KJPaez1/Basic_Stat_Methods/main/data_for_students/complicaciones_pie_diab.csv"
+
+datos <- read.csv(
+  url_datos,
+  header = TRUE,
+  sep = ",",
+  na.strings = c("", "NA"),
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  fileEncoding = "UTF-8-BOM"
+)
+
+dim(datos)
+names(datos)
+head(datos)
+```
+
+# Descripción de la base
+
+```{r}
+cat("Número de filas:", nrow(datos), "\n")
+cat("Número de variables:", ncol(datos), "\n")
+
+table(datos$grupo, useNA = "ifany")
+```
+
+La variable dependiente es `grupo`, con dos categorías: `caso` y `control`. Se define `caso` como el evento (1) y `control` como la categoría de referencia (0).
+
+```{r}
+datos$grupo <- factor(
+  trimws(tolower(datos$grupo)),
+  levels = c("control", "caso")
+)
+
+datos$sexo <- factor(trimws(datos$sexo))
+datos$antecedentes_familiares_de_diabetes <-
+  factor(trimws(datos$antecedentes_familiares_de_diabetes))
+
+str(datos[, c(
+  "grupo", "sexo", "edad",
+  "antecedentes_familiares_de_diabetes",
+  "num_comorbilidades",
+  "presión_arterial_sistólica",
+  "presión_arterial_diastólica",
+  "imc", "urea"
+)])
+```
+
+# Selección de variables
+
+Se consideran inicialmente las siguientes variables explicativas:
+
+- `edad`: edad en años.
+- `sexo`: sexo registrado en la base.
+- `antecedentes_familiares_de_diabetes`: antecedente familiar de diabetes.
+- `num_comorbilidades`: número de comorbilidades.
+- `presión_arterial_sistólica`: presión arterial sistólica.
+- `presión_arterial_diastólica`: presión arterial diastólica.
+- `imc`: índice de masa corporal.
+- `urea`: concentración de urea, según la unidad registrada en la fuente.
+
+Estas variables se priorizan porque están disponibles en ambos grupos y presentan menos datos faltantes que otras variables de la base. No se incorporan como predictores `ulcera`, `gangrena`, `osteomielitis`, `amputación`, `infeccion_local`, `num_comp` ni `duración_ulcera`, porque en el archivo aparecen sin datos para el grupo control; por tanto, no permiten una comparación entre casos y controles.
+
+Tampoco se incorporan inicialmente `hb1ac`, `tiempo_de_enfermedad`, `tabaquismo` y `alcoholismo`, debido a su proporción considerable de datos ausentes. Su inclusión requeriría una estrategia específica de manejo de datos faltantes y una justificación adicional.
+
+# Revisión de datos faltantes
+
+```{r}
+variables_modelo <- c(
+  "grupo", "edad", "sexo",
+  "antecedentes_familiares_de_diabetes",
+  "num_comorbilidades",
+  "presión_arterial_sistólica",
+  "presión_arterial_diastólica",
+  "imc", "urea"
+)
+
+faltantes <- data.frame(
+  variable = variables_modelo,
+  n_faltantes = sapply(datos[variables_modelo], function(x) sum(is.na(x))),
+  porcentaje = sapply(datos[variables_modelo], function(x) mean(is.na(x)) * 100)
+)
+
+faltantes
+```
+
+# Revisión descriptiva y de plausibilidad
+
+Se revisan los rangos observados antes del ajuste. Los valores extremos no se eliminan automáticamente: deben contrastarse con la fuente original o con el responsable de la base.
+
+```{r}
+variables_numericas <- c(
+  "edad", "num_comorbilidades",
+  "presión_arterial_sistólica",
+  "presión_arterial_diastólica",
+  "imc", "urea"
+)
+
+resumen_numerico <- do.call(
+  rbind,
+  lapply(variables_numericas, function(v) {
+    x <- datos[[v]]
+    data.frame(
+      variable = v,
+      n = sum(!is.na(x)),
+      minimo = min(x, na.rm = TRUE),
+      mediana = median(x, na.rm = TRUE),
+      media = mean(x, na.rm = TRUE),
+      maximo = max(x, na.rm = TRUE)
+    )
+  })
+)
+
+resumen_numerico
+```
+
+**Control de calidad:** si se observan valores clínicamente inverosímiles (por ejemplo, valores muy bajos o altos de presión arterial o IMC), se deben verificar con la fuente antes de decidir si son errores, valores reales o códigos. Este documento conserva los valores originales y no realiza correcciones no documentadas.
+
+# Preparación de la muestra analítica
+
+El modelo se ajusta con observaciones completas en las variables seleccionadas. Este procedimiento se conoce como análisis de casos completos. El número de observaciones utilizado puede ser menor que el total de filas de la base.
+
+```{r}
+datos_modelo <- datos[, variables_modelo]
+datos_modelo <- na.omit(datos_modelo)
+
+datos_modelo$grupo <- factor(
+  datos_modelo$grupo,
+  levels = c("control", "caso")
+)
+
+cat("Observaciones originales:", nrow(datos), "\n")
+cat("Observaciones incluidas en el modelo:", nrow(datos_modelo), "\n")
+cat("Casos:", sum(datos_modelo$grupo == "caso"), "\n")
+cat("Controles:", sum(datos_modelo$grupo == "control"), "\n")
+```
+
+# Justificación del método
+
+La regresión logística binaria es apropiada cuando la variable dependiente tiene dos categorías. En este análisis, el desenlace es pertenecer al grupo `caso` en lugar del grupo `control`.
+
+El modelo estima la probabilidad de pertenecer al grupo de casos a partir de una combinación lineal de predictores en la escala logit:
+
+\[
+\log\left(\frac{p}{1-p}\right)
+=
+\beta_0+\beta_1X_1+\cdots+\beta_kX_k
+\]
+
+donde \(p\) representa la probabilidad de pertenecer al grupo de casos y \(\beta_j\) son los coeficientes del modelo.
+
+# Ajuste del modelo
+
+```{r}
+modelo_logistico <- glm(
+  grupo ~ edad + sexo +
+    antecedentes_familiares_de_diabetes +
+    num_comorbilidades +
+    `presión_arterial_sistólica` +
+    `presión_arterial_diastólica` +
+    imc + urea,
+  data = datos_modelo,
+  family = binomial(link = "logit")
+)
+
+summary(modelo_logistico)
+```
+
+# Estimación de odds ratios
+
+Los coeficientes del modelo están expresados en log-odds. Al aplicar la función exponencial se obtienen odds ratios (OR).
+
+```{r}
+coeficientes <- summary(modelo_logistico)$coefficients
+
+tabla_or <- data.frame(
+  termino = rownames(coeficientes),
+  beta = coeficientes[, "Estimate"],
+  error_estandar = coeficientes[, "Std. Error"],
+  OR = exp(coeficientes[, "Estimate"]),
+  IC95_inferior = exp(coeficientes[, "Estimate"] -
+                        1.96 * coeficientes[, "Std. Error"]),
+  IC95_superior = exp(coeficientes[, "Estimate"] +
+                        1.96 * coeficientes[, "Std. Error"]),
+  valor_p = coeficientes[, "Pr(>|z|)"],
+  row.names = NULL
+)
+
+knitr::kable(
+  tabla_or,
+  digits = 3,
+  caption = "Odds ratios e intervalos de confianza del 95 %"
+)
+```
+
+# Evaluación global del modelo
+
+Se comparan el modelo ajustado y el modelo nulo mediante una prueba de razón de verosimilitudes. También se reportan el AIC y el pseudo-\(R^2\) de McFadden como medidas descriptivas de ajuste.
+
+```{r}
+modelo_nulo <- glm(
+  grupo ~ 1,
+  data = datos_modelo,
+  family = binomial(link = "logit")
+)
+
+comparacion <- anova(modelo_nulo, modelo_logistico, test = "Chisq")
+comparacion
+
+pseudo_r2_mcfadden <- 1 -
+  as.numeric(logLik(modelo_logistico) / logLik(modelo_nulo))
+
+metricas <- data.frame(
+  n = nobs(modelo_logistico),
+  AIC = AIC(modelo_logistico),
+  deviance = deviance(modelo_logistico),
+  pseudo_R2_McFadden = pseudo_r2_mcfadden
+)
+
+knitr::kable(metricas, digits = 3)
+```
+
+# Consideraciones metodológicas
+
+1. La asociación estimada no demuestra causalidad.
+2. En un diseño de casos y controles, el OR es una medida de asociación adecuada, pero el intercepto y las probabilidades predichas no deben interpretarse automáticamente como riesgos poblacionales.
+3. El análisis de casos completos puede introducir sesgo si la ausencia de datos no es aleatoria.
+4. Las variables con ausencia estructural en controles no se deben tratar como predictores comparables entre grupos.
+5. Antes de presentar conclusiones definitivas, deben revisarse valores extremos, posibles errores de digitación, colinealidad y la pertinencia clínica de cada predictor.
+
+# Nota sobre el diccionario de datos
+
+El archivo `diccionario_diabetes.txt` disponible en la ruta indicada describe variables como `num_embarazos`, `glucosa_2h`, `insulina_2h` y `diabetes_5a`. Esas variables no corresponden a las columnas de `complicaciones_pie_diab.csv`. Por esa razón, dicho diccionario no se utiliza para definir ni reinterpretar las variables de este análisis. Para documentar correctamente esta base se necesita su diccionario específico.
+
+# Conclusión del apartado A
+
+Se especificó un modelo de regresión logística binaria con `grupo` como variable dependiente, definiendo `caso` como evento y `control` como referencia. El modelo incluye predictores disponibles en ambos grupos y utiliza casos completos para las variables seleccionadas. Las estimaciones y las medidas de ajuste se generan al ejecutar el documento, por lo que se actualizan si cambia la base de GitHub.
