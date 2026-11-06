@@ -1,0 +1,180 @@
+---
+title: "Interpretación de los resultados de la regresión logística binaria"
+subtitle: "Análisis de complicaciones del pie diabético: estudio de casos y controles"
+author: "Trabajo de Bioestadística"
+lang: es
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: show
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Introducción
+
+Este documento presenta la interpretación de un modelo de regresión logística binaria aplicado a la base de datos `complicaciones_pie_diab.csv`. La variable dependiente es `grupo`, que distingue entre pacientes pertenecientes al grupo de casos y al grupo de controles.
+
+El objetivo del análisis es identificar qué características sociodemográficas y clínicas presentan asociación estadística con la pertenencia al grupo de casos, considerando simultáneamente las variables incluidas en el modelo.
+
+La base de datos se obtiene directamente desde GitHub, permitiendo reproducir el análisis sin depender de una ruta local.
+
+# Carga y preparación de los datos
+
+```{r}
+url_datos <- "https://raw.githubusercontent.com/KJPaez1/Basic_Stat_Methods/main/data_for_students/complicaciones_pie_diab.csv"
+
+datos <- read.csv(
+  url_datos,
+  header = TRUE,
+  sep = ",",
+  na.strings = c("", "NA"),
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  fileEncoding = "UTF-8-BOM"
+)
+
+datos$grupo <- factor(
+  trimws(tolower(datos$grupo)),
+  levels = c("control", "caso")
+)
+
+datos$sexo <- factor(trimws(datos$sexo))
+
+datos$antecedentes_familiares_de_diabetes <-
+  factor(trimws(datos$antecedentes_familiares_de_diabetes))
+
+variables_modelo <- c(
+  "grupo", "edad", "sexo",
+  "antecedentes_familiares_de_diabetes",
+  "num_comorbilidades",
+  "presión_arterial_sistólica",
+  "presión_arterial_diastólica",
+  "imc", "urea"
+)
+
+datos_modelo <- na.omit(datos[, variables_modelo])
+
+datos_modelo$grupo <- factor(
+  datos_modelo$grupo,
+  levels = c("control", "caso")
+)
+
+modelo_logistico <- glm(
+  grupo ~ edad + sexo +
+    antecedentes_familiares_de_diabetes +
+    num_comorbilidades +
+    `presión_arterial_sistólica` +
+    `presión_arterial_diastólica` +
+    imc + urea,
+  data = datos_modelo,
+  family = binomial(link = "logit")
+)
+
+summary(modelo_logistico)
+coeficientes <- summary(modelo_logistico)$coefficients
+
+tabla_or <- data.frame(
+  variable = rownames(coeficientes),
+  beta = coeficientes[, "Estimate"],
+  OR = exp(coeficientes[, "Estimate"]),
+  IC95_inferior = exp(
+    coeficientes[, "Estimate"] -
+      1.96 * coeficientes[, "Std. Error"]
+  ),
+  IC95_superior = exp(
+    coeficientes[, "Estimate"] +
+      1.96 * coeficientes[, "Std. Error"]
+  ),
+  valor_p = coeficientes[, "Pr(>|z|)"],
+  row.names = NULL
+)
+
+tabla_or$interpretacion_estadistica <- ifelse(
+  tabla_or$valor_p < 0.05 &
+    (tabla_or$IC95_inferior > 1 |
+       tabla_or$IC95_superior < 1),
+  "Asociación estadísticamente significativa",
+  "Sin evidencia estadística suficiente de asociación"
+)
+
+knitr::kable(
+  tabla_or,
+  digits = 3,
+  caption = "Resultados del modelo logístico: OR, IC del 95 % y valor p"
+)
+tabla_interpretacion <- tabla_or[
+  tabla_or$variable != "(Intercept)", 
+]
+
+tabla_interpretacion$direccion <- ifelse(
+  tabla_interpretacion$OR > 1,
+  "Mayores odds de pertenecer al grupo de casos",
+  ifelse(
+    tabla_interpretacion$OR < 1,
+    "Menores odds de pertenecer al grupo de casos",
+    "Sin cambio en las odds estimadas"
+  )
+)
+
+knitr::kable(
+  tabla_interpretacion[, c(
+    "variable", "OR", "IC95_inferior", "IC95_superior",
+    "valor_p", "direccion", "interpretacion_estadistica"
+  )],
+  digits = 3,
+  caption = "Interpretación de los predictores del modelo logístico"
+)
+modelo_nulo <- glm(
+  grupo ~ 1,
+  data = datos_modelo,
+  family = binomial(link = "logit")
+)
+
+prueba_global <- anova(
+  modelo_nulo,
+  modelo_logistico,
+  test = "Chisq"
+)
+
+prueba_global
+
+pseudo_r2_mcfadden <- 1 -
+  as.numeric(
+    logLik(modelo_logistico) /
+      logLik(modelo_nulo)
+  )
+
+metricas <- data.frame(
+  observaciones = nobs(modelo_logistico),
+  AIC = AIC(modelo_logistico),
+  deviance_residual = deviance(modelo_logistico),
+  pseudo_R2_McFadden = pseudo_r2_mcfadden
+)
+
+knitr::kable(
+  metricas,
+  digits = 3,
+  caption = "Indicadores de ajuste del modelo logístico"
+)
+
+
+p_global <- prueba_global$`Pr(>Chi)`[2]
+
+cat(
+  "El modelo se ajustó con",
+  nobs(modelo_logistico),
+  "observaciones completas. ",
+  "La prueba global de razón de verosimilitudes presentó un valor p de",
+  format.pval(p_global, digits = 4),
+  ". ",
+  if (p_global < 0.05) {
+    "Por tanto, el modelo completo presenta una mejora estadísticamente significativa respecto al modelo nulo. En conjunto, las variables explicativas aportan información para distinguir entre los grupos de casos y controles."
+  } else {
+    "Por tanto, no se encontró evidencia estadística suficiente de que el modelo completo mejore el ajuste respecto al modelo nulo."
+  }
+)
