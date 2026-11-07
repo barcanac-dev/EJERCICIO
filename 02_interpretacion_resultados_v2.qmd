@@ -1,24 +1,20 @@
 ---
-title: "Interpretación de los resultados de la regresión logística binaria"
-subtitle: "Análisis de complicaciones del pie diabético: estudio de casos y controles"
-author: "Trabajo de Bioestadística"
-lang: es
-format:
-  html:
-    toc: true
-    toc-depth: 3
-    number-sections: true
-    code-fold: show
-execute:
-  echo: true
-  warning: false
-  message: false
+title: "PRACTICA CALIFICADA 3"
+author: 
+  - NOMBRES: 
+- PINTO CHOQUE, MATHIAS ESTEBAN
+- BAUTISTA PAREDES, JUAN ALEXANDER
+- EVANAN CASTAÑEDA, GABRIEL ISAAC
+- CARDENAS GONZALES, CAROLINA ALEXANDRA
+- VARGAS VASQUEZ, ANGELICA NICOLE
+
+  - name: Grupo 5
+format: html
 ---
 
 # Introducción
 
 Este documento presenta la interpretación de un modelo de regresión logística binaria aplicado a la base `complicaciones_pie_diab.csv`. La variable dependiente es `grupo`, que distingue entre `caso` y `control`.
-
 La base se obtiene directamente desde GitHub para que los resultados se puedan reproducir sin depender de una ruta local.
 
 # Carga y preparación de los datos
@@ -74,7 +70,6 @@ summary(modelo_logistico)
 ```
 
 # ¿Cómo se interpretan los resultados?
-
 La regresión logística estima la asociación entre cada predictor y las odds de pertenecer al grupo de casos, manteniendo constantes las demás variables del modelo.
 
 - **Coeficiente (\(\beta\))**: cambio en el logaritmo de las odds por una unidad de aumento del predictor, o respecto de la categoría de referencia.
@@ -180,9 +175,7 @@ knitr::kable(metricas, digits = 3)
 
 La prueba de razón de verosimilitudes evalúa si el modelo con predictores mejora el ajuste respecto al modelo nulo. El pseudo-\(R^2\) de McFadden es una medida relativa de mejora del ajuste; no debe interpretarse como el porcentaje de variabilidad explicada de una regresión lineal.
 
-# Redacción de resultados para el informe
-
-El siguiente bloque construye un resumen con los resultados obtenidos al renderizar el documento. Debe revisarse y complementarse con el contexto clínico antes de entregar el informe.
+# Redacción de resultados
 
 ```{r}
 p_global <- prueba_global$`Pr(>Chi)`[2]
