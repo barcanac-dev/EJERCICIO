@@ -1,0 +1,221 @@
+---
+title: "Interpretación de los resultados de la regresión logística binaria"
+subtitle: "Análisis de complicaciones del pie diabético: estudio de casos y controles"
+author: "Trabajo de Bioestadística"
+lang: es
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: show
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Introducción
+
+Este documento presenta la interpretación de un modelo de regresión logística binaria aplicado a la base `complicaciones_pie_diab.csv`. La variable dependiente es `grupo`, que distingue entre `caso` y `control`.
+
+La base se obtiene directamente desde GitHub para que los resultados se puedan reproducir sin depender de una ruta local.
+
+# Carga y preparación de los datos
+
+```{r}
+url_datos <- "https://raw.githubusercontent.com/KJPaez1/Basic_Stat_Methods/main/data_for_students/complicaciones_pie_diab.csv"
+
+datos <- read.csv(
+  url_datos,
+  header = TRUE,
+  sep = ",",
+  na.strings = c("", "NA"),
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  fileEncoding = "UTF-8-BOM"
+)
+
+datos$grupo <- factor(
+  trimws(tolower(datos$grupo)),
+  levels = c("control", "caso")
+)
+datos$sexo <- factor(trimws(datos$sexo))
+datos$antecedentes_familiares_de_diabetes <-
+  factor(trimws(datos$antecedentes_familiares_de_diabetes))
+
+variables_modelo <- c(
+  "grupo", "edad", "sexo",
+  "antecedentes_familiares_de_diabetes",
+  "num_comorbilidades",
+  "presión_arterial_sistólica",
+  "presión_arterial_diastólica",
+  "imc", "urea"
+)
+
+datos_modelo <- na.omit(datos[, variables_modelo])
+datos_modelo$grupo <- factor(
+  datos_modelo$grupo,
+  levels = c("control", "caso")
+)
+
+modelo_logistico <- glm(
+  grupo ~ edad + sexo +
+    antecedentes_familiares_de_diabetes +
+    num_comorbilidades +
+    `presión_arterial_sistólica` +
+    `presión_arterial_diastólica` +
+    imc + urea,
+  data = datos_modelo,
+  family = binomial(link = "logit")
+)
+
+summary(modelo_logistico)
+```
+
+# ¿Cómo se interpretan los resultados?
+
+La regresión logística estima la asociación entre cada predictor y las odds de pertenecer al grupo de casos, manteniendo constantes las demás variables del modelo.
+
+- **Coeficiente (\(\beta\))**: cambio en el logaritmo de las odds por una unidad de aumento del predictor, o respecto de la categoría de referencia.
+- **Odds ratio (OR)**: exponencial del coeficiente, \(OR=e^\beta\).
+- **OR mayor que 1**: mayores odds de pertenecer al grupo de casos.
+- **OR menor que 1**: menores odds de pertenecer al grupo de casos.
+- **OR igual a 1**: ausencia de asociación en la escala de odds.
+- **Intervalo de confianza del 95 %**: rango de valores compatibles con los datos bajo el método de estimación. Si el intervalo del OR incluye 1, no se observa evidencia estadística de asociación al nivel bilateral aproximado del 5 %.
+- **Valor p**: cuantifica la evidencia contra la hipótesis nula de coeficiente igual a cero. Un valor p inferior a 0.05 suele considerarse evidencia estadística, sin que ello mida la importancia clínica.
+
+# Tabla de odds ratios e intervalos de confianza
+
+```{r}
+coeficientes <- summary(modelo_logistico)$coefficients
+
+tabla_or <- data.frame(
+  variable = rownames(coeficientes),
+  beta = coeficientes[, "Estimate"],
+  OR = exp(coeficientes[, "Estimate"]),
+  IC95_inferior = exp(coeficientes[, "Estimate"] -
+                        1.96 * coeficientes[, "Std. Error"]),
+  IC95_superior = exp(coeficientes[, "Estimate"] +
+                        1.96 * coeficientes[, "Std. Error"]),
+  valor_p = coeficientes[, "Pr(>|z|)"],
+  row.names = NULL
+)
+
+tabla_or$interpretacion_estadistica <- ifelse(
+  tabla_or$valor_p < 0.05 &
+    (tabla_or$IC95_inferior > 1 | tabla_or$IC95_superior < 1),
+  "Evidencia estadística de asociación",
+  "No se observa evidencia estadística suficiente al 5 %"
+)
+
+knitr::kable(
+  tabla_or,
+  digits = 3,
+  caption = "Resultados del modelo logístico: OR, IC del 95 % y valor p"
+)
+```
+
+# Interpretación de cada variable
+
+La siguiente tabla genera una interpretación automática de la dirección de la asociación. La interpretación debe leerse junto con el intervalo de confianza y el valor p.
+
+```{r}
+tabla_interpretacion <- tabla_or[tabla_or$variable != "(Intercept)", ]
+
+tabla_interpretacion$direccion <- ifelse(
+  tabla_interpretacion$OR > 1,
+  "OR > 1: mayores odds de pertenecer al grupo de casos",
+  ifelse(
+    tabla_interpretacion$OR < 1,
+    "OR < 1: menores odds de pertenecer al grupo de casos",
+    "OR = 1: no cambia las odds estimadas"
+  )
+)
+
+knitr::kable(
+  tabla_interpretacion[, c(
+    "variable", "OR", "IC95_inferior", "IC95_superior",
+    "valor_p", "direccion", "interpretacion_estadistica"
+  )],
+  digits = 3,
+  caption = "Guía de interpretación de los predictores"
+)
+```
+
+## Interpretación según el tipo de predictor
+
+- **Edad:** el OR corresponde al cambio en las odds asociado con un año adicional de edad, manteniendo constantes las demás variables.
+- **Sexo:** el OR compara la categoría mostrada en el coeficiente con la categoría de referencia de `sexo`. La categoría de referencia se puede consultar con `levels(datos_modelo$sexo)`.
+- **Antecedentes familiares de diabetes:** el OR compara la categoría mostrada en el coeficiente con la categoría de referencia. La referencia se puede consultar con `levels(datos_modelo$antecedentes_familiares_de_diabetes)`.
+- **Número de comorbilidades:** el OR corresponde al cambio asociado con una comorbilidad adicional.
+- **Presión arterial sistólica y diastólica:** cada OR corresponde a un aumento de 1 mm Hg, de acuerdo con la unidad registrada.
+- **IMC:** el OR corresponde a un aumento de una unidad de IMC.
+- **Urea:** el OR corresponde a un aumento de una unidad en la escala registrada en la base; la unidad debe confirmarse en el diccionario específico de esta base.
+
+# Evaluación global del modelo
+
+```{r}
+modelo_nulo <- glm(
+  grupo ~ 1,
+  data = datos_modelo,
+  family = binomial(link = "logit")
+)
+
+prueba_global <- anova(modelo_nulo, modelo_logistico, test = "Chisq")
+prueba_global
+
+pseudo_r2_mcfadden <- 1 -
+  as.numeric(logLik(modelo_logistico) / logLik(modelo_nulo))
+
+metricas <- data.frame(
+  observaciones = nobs(modelo_logistico),
+  AIC = AIC(modelo_logistico),
+  deviance_residual = deviance(modelo_logistico),
+  pseudo_R2_McFadden = pseudo_r2_mcfadden
+)
+
+knitr::kable(metricas, digits = 3)
+```
+
+La prueba de razón de verosimilitudes evalúa si el modelo con predictores mejora el ajuste respecto al modelo nulo. El pseudo-\(R^2\) de McFadden es una medida relativa de mejora del ajuste; no debe interpretarse como el porcentaje de variabilidad explicada de una regresión lineal.
+
+# Redacción de resultados para el informe
+
+El siguiente bloque construye un resumen con los resultados obtenidos al renderizar el documento. Debe revisarse y complementarse con el contexto clínico antes de entregar el informe.
+
+```{r}
+p_global <- prueba_global$`Pr(>Chi)`[2]
+
+cat(
+  "El modelo se ajustó con", nobs(modelo_logistico),
+  "observaciones completas. ",
+  "La prueba global de razón de verosimilitudes presentó un valor p de",
+  signif(p_global, 3), ". ",
+  if (is.finite(p_global) && p_global < 0.05) {
+    "En conjunto, los predictores mejoran el ajuste frente al modelo nulo."
+  } else {
+    "No se encontró evidencia suficiente de mejora global frente al modelo nulo."
+  },
+  "\n"
+)
+```
+
+Para redactar cada asociación se recomienda utilizar una estructura como esta:
+
+> Después de ajustar por las demás variables incluidas en el modelo, [variable] presentó un OR de [OR], con IC del 95 % [límite inferior–límite superior] y valor p [valor p]. Esto indica [mayores/menores] odds de pertenecer al grupo de casos en comparación con la categoría de referencia o por cada unidad adicional del predictor. La evidencia estadística debe valorarse considerando el intervalo de confianza, el valor p y la relevancia clínica.
+
+# Limitaciones e interpretación prudente
+
+1. **Diseño de casos y controles:** el OR describe la asociación con la condición de caso dentro de la muestra. No se deben interpretar las probabilidades predichas como riesgo absoluto poblacional.
+2. **Datos faltantes:** el modelo utiliza casos completos para las variables seleccionadas. Si la ausencia de datos está relacionada con las características de los participantes, las estimaciones podrían estar sesgadas.
+3. **Posibles valores extremos:** deben verificarse con la fuente original antes de corregirlos o excluirlos.
+4. **Confusión y especificación:** la selección de predictores debe justificarse clínica y metodológicamente. La asociación ajustada no elimina toda posibilidad de confusión residual.
+5. **Asociación no es causalidad:** los resultados no demuestran que una variable cause complicaciones.
+6. **Diccionario no coincidente:** el archivo `diccionario_diabetes.txt` describe un conjunto distinto de variables (por ejemplo, glucosa a las 2 horas, insulina y número de embarazos); por ello, no se usa para asignar unidades o definiciones a las variables de esta base.
+
+# Conclusiones del apartado B
+
+La interpretación del modelo debe centrarse en los OR ajustados, sus intervalos de confianza del 95 % y sus valores p. Un OR superior a 1 representa mayores odds de pertenecer al grupo de casos y un OR inferior a 1 representa menores odds, siempre en comparación con la categoría de referencia o por unidad de incremento correspondiente.
+
+Las conclusiones finales deben basarse en las tablas generadas al ejecutar el documento y expresarse como asociaciones. No se deben afirmar factores causales ni riesgos absolutos a partir de este diseño de casos y controles.
