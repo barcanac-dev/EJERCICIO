@@ -200,22 +200,4 @@ cat(
   "\n"
 )
 ```
-
-Para redactar cada asociación se recomienda utilizar una estructura como esta:
-
-> Después de ajustar por las demás variables incluidas en el modelo, [variable] presentó un OR de [OR], con IC del 95 % [límite inferior–límite superior] y valor p [valor p]. Esto indica [mayores/menores] odds de pertenecer al grupo de casos en comparación con la categoría de referencia o por cada unidad adicional del predictor. La evidencia estadística debe valorarse considerando el intervalo de confianza, el valor p y la relevancia clínica.
-
-# Limitaciones e interpretación prudente
-
-1. **Diseño de casos y controles:** el OR describe la asociación con la condición de caso dentro de la muestra. No se deben interpretar las probabilidades predichas como riesgo absoluto poblacional.
-2. **Datos faltantes:** el modelo utiliza casos completos para las variables seleccionadas. Si la ausencia de datos está relacionada con las características de los participantes, las estimaciones podrían estar sesgadas.
-3. **Posibles valores extremos:** deben verificarse con la fuente original antes de corregirlos o excluirlos.
-4. **Confusión y especificación:** la selección de predictores debe justificarse clínica y metodológicamente. La asociación ajustada no elimina toda posibilidad de confusión residual.
-5. **Asociación no es causalidad:** los resultados no demuestran que una variable cause complicaciones.
-6. **Diccionario no coincidente:** el archivo `diccionario_diabetes.txt` describe un conjunto distinto de variables (por ejemplo, glucosa a las 2 horas, insulina y número de embarazos); por ello, no se usa para asignar unidades o definiciones a las variables de esta base.
-
-# Conclusiones del apartado B
-
-La interpretación del modelo debe centrarse en los OR ajustados, sus intervalos de confianza del 95 % y sus valores p. Un OR superior a 1 representa mayores odds de pertenecer al grupo de casos y un OR inferior a 1 representa menores odds, siempre en comparación con la categoría de referencia o por unidad de incremento correspondiente.
-
-Las conclusiones finales deben basarse en las tablas generadas al ejecutar el documento y expresarse como asociaciones. No se deben afirmar factores causales ni riesgos absolutos a partir de este diseño de casos y controles.
+rmar factores causales ni riesgos absolutos a partir de este diseño de casos y controles.
